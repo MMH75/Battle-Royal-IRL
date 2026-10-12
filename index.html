@@ -1,0 +1,206 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Battle Royal IRL</title>
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<style>
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; overflow: hidden; background: #111; font-family: 'Segoe UI', Roboto, Arial, sans-serif; color: #fff; user-select: none; }
+  #game canvas { display: block; }
+  .hidden { display: none !important; }
+  #hud { position: fixed; inset: 0; pointer-events: none; }
+  #crosshair { position: absolute; left: 50%; top: 50%; --gap: 6px; }
+  #crosshair i { position: absolute; background: #fff; box-shadow: 0 0 2px #000; }
+  #crosshair .t, #crosshair .b { width: 2px; height: 9px; left: -1px; }
+  #crosshair .l, #crosshair .r { height: 2px; width: 9px; top: -1px; }
+  #crosshair .t { bottom: var(--gap); } #crosshair .b { top: var(--gap); }
+  #crosshair .l { right: var(--gap); } #crosshair .r { left: var(--gap); }
+  #adsdot { position: absolute; left: 50%; top: 50%; width: 4px; height: 4px; margin: -2px; border-radius: 50%; background: #ff3b3b; box-shadow: 0 0 3px #f00; display: none; }
+  #hitmarker { position: absolute; left: 50%; top: 50%; width: 26px; height: 26px; margin: -13px; opacity: 0; }
+  #hitmarker::before, #hitmarker::after { content: ''; position: absolute; left: 12px; top: 0; width: 2px; height: 26px; background: linear-gradient(#fff 0 35%, transparent 35% 65%, #fff 65%); }
+  #hitmarker::before { transform: rotate(45deg); } #hitmarker::after { transform: rotate(-45deg); }
+  #hitmarker.show { opacity: 1; } #hitmarker.head::before, #hitmarker.head::after { background: linear-gradient(#ffd23b 0 35%, transparent 35% 65%, #ffd23b 65%); }
+  #hitmarker.kill::before, #hitmarker.kill::after { background: linear-gradient(#ff3b3b 0 35%, transparent 35% 65%, #ff3b3b 65%); }
+  #scope { position: absolute; inset: 0; display: none; }
+  #scope .lens { position: absolute; left: 50%; top: 50%; width: 92vmin; height: 92vmin; transform: translate(-50%, -50%); border-radius: 50%; box-shadow: 0 0 0 200vmax #000, inset 0 0 60px 20px rgba(0,0,0,.85); }
+  #scope .h { position: absolute; left: 0; right: 0; top: 50%; height: 1px; background: #000; }
+  #scope .v { position: absolute; top: 0; bottom: 0; left: 50%; width: 1px; background: #000; }
+  #scope .h::after { content: ''; position: absolute; left: 50%; top: -1px; width: 6px; height: 3px; margin-left: -3px; background: #e00; }
+  #vignette { position: absolute; inset: 0; opacity: 0; transition: opacity .25s; background: radial-gradient(ellipse at center, transparent 45%, rgba(200,0,0,.75) 100%); }
+  #dmgdirs .dmgdir { position: absolute; left: 50%; top: 50%; width: 0; height: 0; opacity: 0; }
+  #dmgdirs .dmgdir::before { content: ''; position: absolute; left: -45px; top: -170px; width: 90px; height: 22px; border-radius: 50% 50% 0 0; background: radial-gradient(ellipse at bottom, rgba(255,40,40,.9), transparent 70%); }
+  @keyframes dirfade { 0% { opacity: 1 } 100% { opacity: 0 } }
+  #teams { position: absolute; top: 12px; left: 50%; transform: translateX(-50%); display: flex; align-items: center; gap: 14px; background: rgba(0,0,0,.45); padding: 6px 14px; border-radius: 6px; font-size: 13px; }
+  .team { display: flex; align-items: center; gap: 4px; }
+  .team i { display: inline-block; width: 13px; height: 18px; border-radius: 2px; }
+  .team.blue i { background: #3f7fff; } .team.red i { background: #e2463c; }
+  .team i.dead { background: #444 !important; opacity: .6; }
+  .team i.me { outline: 2px solid #ffe14d; }
+  .team span { font-size: 20px; font-weight: 700; margin-left: 6px; }
+  .team span small { font-size: 12px; opacity: .7; }
+  .team em.bar { display: inline-block; width: 120px; height: 12px; background: #444; border-radius: 2px; overflow: hidden; }
+  .team em.bar em { display: block; height: 100%; }
+  .team.blue em.bar em { background: #3f7fff; } .team.red em.bar em { background: #e2463c; }
+  .team.blue b { color: #6aa3ff; } .team.red b { color: #ff6a5e; }
+  .vs { opacity: .6; font-weight: 700; }
+  #zoneinfo { position: absolute; top: 56px; left: 50%; transform: translateX(-50%); font-size: 14px; text-align: center; text-shadow: 0 1px 3px #000; }
+  .warn { color: #ff6b4a; font-weight: 700; }
+  #minimap { position: absolute; top: 14px; right: 14px; width: 200px; height: 200px; }
+  #killfeed { position: absolute; top: 224px; right: 14px; width: 300px; text-align: right; font-size: 13px; }
+  #killfeed div { background: rgba(0,0,0,.5); margin-bottom: 3px; padding: 3px 8px; border-radius: 3px; display: inline-block; float: right; clear: both; }
+  #killfeed div.me { background: rgba(80,60,0,.6); }
+  #killfeed em { color: #ccc; font-style: normal; font-size: 12px; }
+  .blue { color: #6aa3ff; } .red { color: #ff6a5e; }
+  #health { position: absolute; left: 20px; bottom: 22px; display: flex; align-items: center; gap: 10px; background: rgba(0,0,0,.45); padding: 8px 12px; border-radius: 6px; }
+  #health .label { font-weight: 700; color: #aaa; font-size: 13px; }
+  #health .bar { width: 220px; height: 14px; background: rgba(255,255,255,.15); border-radius: 3px; overflow: hidden; }
+  #hpfill { height: 100%; width: 100%; background: #5fd35f; transition: width .15s; }
+  #health { padding-bottom: 14px; }
+  #stamina { position: absolute; left: 42px; right: 64px; bottom: 6px; height: 5px; background: rgba(255,255,255,.15); border-radius: 3px; overflow: hidden; }
+  #stamfill { height: 100%; width: 100%; background: #f0c53a; transition: width .1s; }
+  #stamfill.tired { background: #e8493f; }
+  #hptext { font-size: 22px; font-weight: 700; min-width: 40px; }
+  #medbox { position: absolute; left: 20px; bottom: 78px; display: flex; align-items: center; gap: 10px; background: rgba(0,0,0,.45); padding: 6px 12px; border-radius: 6px; border: 2px solid #d81e1e; }
+  #medbox.empty { opacity: .5; border-color: #555; }
+  #medbox .cross { font-size: 26px; color: #ff3b3b; line-height: 1; }
+  #medbox b { font-size: 22px; } #medbox small { color: #bbb; }
+  #medbox .lbl { font-size: 10px; color: #aaa; letter-spacing: 1px; }
+  #medbox kbd { background: #eee; color: #111; border-radius: 3px; padding: 1px 6px; font-weight: 700; font-family: inherit; }
+  #heal { position: absolute; left: 50%; top: 56%; transform: translateX(-50%); width: 220px; text-align: center; display: none; text-shadow: 0 1px 3px #000; }
+  #heal .bar { height: 8px; background: rgba(255,255,255,.2); border-radius: 4px; overflow: hidden; margin-top: 4px; }
+  #healfill { height: 100%; width: 0; background: #5fd35f; }
+  #weapon { position: absolute; right: 20px; bottom: 22px; text-align: right; background: rgba(0,0,0,.45); padding: 8px 12px; border-radius: 6px; }
+  #wname { font-size: 15px; font-weight: 700; letter-spacing: 1px; text-transform: uppercase; }
+  #wname .rl { color: #ffcf4a; font-size: 12px; margin-left: 6px; }
+  #ammo { font-size: 34px; font-weight: 700; line-height: 1.1; }
+  #ammo small { font-size: 18px; color: #bbb; } #ammo .empty { color: #ff4a4a; } #ammo .inf { font-size: 28px; }
+  #slots { display: flex; gap: 6px; margin-top: 6px; justify-content: flex-end; }
+  .slot { border: 2px solid #555; border-radius: 4px; padding: 3px 8px; font-size: 12px; min-width: 64px; text-align: center; opacity: .6; background: rgba(0,0,0,.3); }
+  .slot span { color: #aaa; margin-right: 5px; font-weight: 700; }
+  .slot.cur { opacity: 1; background: rgba(255,255,255,.15); }
+  #prompt { position: absolute; left: 50%; top: 62%; transform: translateX(-50%); font-size: 17px; text-shadow: 0 1px 3px #000; background: rgba(0,0,0,.4); padding: 4px 12px; border-radius: 4px; }
+  #prompt:empty { display: none; }
+  #pickmsg { position: absolute; left: 50%; top: 68%; transform: translateX(-50%); font-size: 14px; opacity: 0; transition: opacity .3s; text-shadow: 0 1px 3px #000; }
+  #center { position: absolute; left: 50%; top: 35%; transform: translate(-50%, -50%); font-size: 54px; font-weight: 800; text-shadow: 0 2px 10px #000; letter-spacing: 4px; }
+  #center .dead { color: #ff4a4a; }
+  #spec { position: absolute; left: 50%; bottom: 90px; transform: translateX(-50%); font-size: 15px; background: rgba(0,0,0,.5); padding: 6px 14px; border-radius: 4px; }
+  #spec:empty { display: none; }
+  #bigmap { position: fixed; left: 50%; top: 50%; transform: translate(-50%, -50%); width: min(90vmin, 700px); height: min(90vmin, 700px); border: 3px solid rgba(255,255,255,.7); border-radius: 4px; pointer-events: none; }
+  .overlay { position: fixed; inset: 0; display: flex; align-items: center; justify-content: center; flex-direction: column; background: radial-gradient(ellipse at center, rgba(20,30,50,.82), rgba(0,0,0,.94)); z-index: 10; }
+  .panel { background: rgba(255,255,255,.05); border: 1px solid rgba(255,255,255,.15); border-radius: 10px; padding: 28px 36px; max-width: 760px; width: calc(100% - 32px); }
+  h1 { font-size: 56px; margin: 0 0 4px; letter-spacing: 6px; font-weight: 900; text-align: center; background: linear-gradient(#ffd75e, #ff7b2e); -webkit-background-clip: text; background-clip: text; color: transparent; }
+  .sub { text-align: center; color: #aaa; margin-bottom: 20px; }
+  .cols { display: grid; grid-template-columns: 1fr 1fr; gap: 6px 28px; font-size: 14px; color: #ddd; }
+  .cols b { display: inline-block; min-width: 92px; color: #ffd75e; }
+  .row { display: flex; gap: 20px; align-items: center; justify-content: center; margin: 20px 0 6px; flex-wrap: wrap; }
+  select, input[type=range] { font-size: 15px; }
+  select { background: #222; color: #fff; border: 1px solid #555; padding: 5px 8px; border-radius: 4px; }
+  button { font-size: 20px; font-weight: 800; letter-spacing: 3px; padding: 12px 44px; border: 0; border-radius: 6px; cursor: pointer; background: linear-gradient(#ffb84a, #ff7b2e); color: #1a1000; margin-top: 14px; }
+  button:hover { filter: brightness(1.1); }
+  .center { text-align: center; }
+  .rarity span { margin-right: 10px; font-size: 13px; }
+  #endtitle { font-size: 64px; font-weight: 900; letter-spacing: 8px; margin: 0; text-align: center; }
+  #endtitle.win { color: #6aa3ff; } #endtitle.lose { color: #ff5a4e; }
+  #endstats table { width: 100%; border-collapse: collapse; margin-top: 10px; font-size: 14px; }
+  #endstats td, #endstats th { padding: 4px 8px; text-align: left; border-bottom: 1px solid rgba(255,255,255,.1); }
+  #endstats tr.me td { background: rgba(255,225,77,.12); }
+  #loading { font-size: 22px; letter-spacing: 3px; }
+</style>
+</head>
+<body>
+<div id="game"></div>
+
+<div id="hud" class="hidden">
+  <div id="vignette"></div>
+  <div id="scope"><div class="lens"></div><div class="h"></div><div class="v"></div></div>
+  <div id="crosshair"><i class="t"></i><i class="b"></i><i class="l"></i><i class="r"></i></div>
+  <div id="adsdot"></div>
+  <div id="hitmarker"></div>
+  <div id="dmgdirs"></div>
+  <div id="teams"></div>
+  <div id="zoneinfo"></div>
+  <canvas id="minimap" width="200" height="200"></canvas>
+  <div id="killfeed"></div>
+  <div id="health"><div class="label">HP</div><div class="bar"><div id="hpfill"></div></div><div id="hptext">100</div>
+    <div id="stamina"><div id="stamfill"></div></div></div>
+  <div id="medbox"><span class="cross">✚</span><div><b id="medcount">0</b><small>/5</small><div class="lbl">MEDKITS</div></div><kbd>E</kbd></div>
+  <div id="heal"><div class="txt">Using medkit…</div><div class="bar"><div id="healfill"></div></div></div>
+  <div id="weapon"><div id="wname"></div><div id="ammo"></div><div id="slots"></div></div>
+  <div id="prompt"></div>
+  <div id="pickmsg"></div>
+  <div id="center"></div>
+  <div id="spec"></div>
+</div>
+<canvas id="bigmap" width="700" height="700" class="hidden"></canvas>
+
+<div id="loading" class="overlay">GENERATING WORLD…</div>
+
+<div id="menu" class="overlay hidden">
+  <div class="panel">
+    <h1>BATTLE ROYAL IRL</h1>
+    <div class="sub">Blue vs Red · no respawns · last team standing wins</div>
+    <div class="cols">
+      <div><b>W A S D</b> Move</div>
+      <div><b>Mouse</b> Look</div>
+      <div><b>Left click</b> Fire / punch / stab</div>
+      <div><b>Right click</b> Toggle aim (ADS)</div>
+      <div><b>Shift</b> Sprint</div>
+      <div><b>Space</b> Jump</div>
+      <div><b>C / Ctrl</b> Toggle crouch</div>
+      <div><b>R</b> Reload</div>
+      <div><b>1 2 3 / Wheel</b> Switch slot</div>
+      <div><b>G</b> Drop / swap item</div>
+      <div><b>E</b> Use medkit (+50 HP)</div>
+      <div><b>F</b> Enter / exit car</div>
+      <div><b>In car</b> W/S gas·reverse, A/D steer, Space brake</div>
+      <div><b>M</b> Full map</div>
+      <div><b>Esc</b> Pause</div>
+    </div>
+    <p class="center" style="color:#bbb;font-size:13px;margin:18px 0 4px">You spawn with fists. Walk over weapons to pick them up automatically (3 slots). When your slots are full, press <b>G</b> to swap.</p>
+    <div class="center rarity">
+      <span style="color:#4caf50">■ A-level (common): Glock-14</span>
+      <span style="color:#2f8cff">■ B-level: NOVA, MP5-SD, UMP-45, AK-47</span>
+      <span style="color:#ffb300">■ C-level (rare): AWP, M249</span>
+    </div>
+    <div class="row">
+      <label><span class="blue">Blue team</span> (you + bots) <input id="bluesize" type="range" min="1" max="50" step="1" value="5"> <b id="bluesizev">5</b></label>
+      <label><span class="red">Red team</span> (bots) <input id="redsize" type="range" min="1" max="50" step="1" value="5"> <b id="redsizev">5</b></label>
+    </div>
+    <div class="row">
+      <label>Bot difficulty
+        <select id="difficulty"><option value="easy">Easy</option><option value="normal" selected>Medium</option><option value="hard">Hard</option></select>
+      </label>
+      <label>Graphics
+        <select id="quality"><option value="low">Low (fast)</option><option value="medium" selected>Medium</option><option value="high">High</option></select>
+      </label>
+      <label>Mouse sensitivity <input id="sens" type="range" min="0.3" max="2.5" step="0.1" value="1"> <span id="sensv">1</span></label>
+    </div>
+    <div class="center"><button id="play">DEPLOY</button></div>
+  </div>
+</div>
+
+<div id="pause" class="overlay hidden">
+  <div class="panel center">
+    <h1>PAUSED</h1>
+    <button id="resume">RESUME</button>
+  </div>
+</div>
+
+<div id="end" class="overlay hidden">
+  <div class="panel">
+    <h2 id="endtitle">VICTORY</h2>
+    <div id="endstats"></div>
+    <div class="center"><button id="again">NEXT ROUND</button></div>
+  </div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script src="js/utils.js"></script>
+<script src="js/world.js"></script>
+<script src="js/weapons.js"></script>
+<script src="js/vehicles.js"></script>
+<script src="js/characters.js"></script>
+<script src="js/game.js"></script>
+</body>
+</html>
